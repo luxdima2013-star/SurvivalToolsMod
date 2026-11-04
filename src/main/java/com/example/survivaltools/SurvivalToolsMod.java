@@ -52,5 +52,96 @@ public class SurvivalToolsMod implements ModInitializer {
                     player.sendMessage(Text.of("§cКулдаун на /skill еще " + leftSec + " сек!"), false);
                     return 0;
                 }
-                skillCooldowns.put
-                    
+                skillCooldowns.put(player.getUuid(), now);
+                player.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, 30 * 20, 6));
+                player.addStatusEffect(new StatusEffectInstance(StatusEffects.SPEED, 30 * 20, 0));
+                player.addStatusEffect(new StatusEffectInstance(StatusEffects.STRENGTH, 30 * 20, 1));
+                player.sendMessage(Text.of("§aСкиллы активированы на 30 секунд!"), false);
+                return 1;
+            }));
+
+            // Команда /kit start
+            dispatcher.register(literal("kit").then(literal("start").executes(context -> {
+                ServerPlayerEntity player = context.getSource().getPlayer();
+                if (player == null) return 0;
+                long now = System.currentTimeMillis();
+                long last = kitCooldowns.getOrDefault(player.getUuid(), 0L);
+                if (now - last < 60 * 60 * 1000) {
+                    long leftMin = (60 * 60 * 1000 - (now - last)) / (60 * 1000);
+                    player.sendMessage(Text.of("§cКулдаун на /kit start еще " + leftMin + " мин!"), false);
+                    return 0;
+                }
+                kitCooldowns.put(player.getUuid(), now);
+                
+                player.equipStack(EquipmentSlot.HEAD, new ItemStack(Items.IRON_HELMET));
+                player.equipStack(EquipmentSlot.CHEST, new ItemStack(Items.IRON_CHESTPLATE));
+                player.equipStack(EquipmentSlot.LEGS, new ItemStack(Items.IRON_LEGGINGS));
+                player.equipStack(EquipmentSlot.FEET, new ItemStack(Items.IRON_BOOTS));
+
+                player.getInventory().insertStack(new ItemStack(Items.IRON_SWORD));
+                player.getInventory().insertStack(new ItemStack(Items.IRON_PICKAXE));
+                player.getInventory().insertStack(new ItemStack(Items.COOKED_BEEF, 32));
+                
+                player.sendMessage(Text.of("§aСтартовый кит успешно получен!"), false);
+                return 1;
+            })));
+
+            // Команда /sethome
+            dispatcher.register(literal("sethome").executes(context -> {
+                ServerPlayerEntity player = context.getSource().getPlayer();
+                if (player == null) return 0;
+                homePositions.put(player.getUuid(), player.getPos());
+                homeDimensions.put(player.getUuid(), player.getWorld().getRegistryKey().getValue().toString());
+                player.sendMessage(Text.of("§aТочка дома успешно сохранена!"), false);
+                return 1;
+            }));
+
+            // Команда /home
+            dispatcher.register(literal("home").executes(context -> {
+                ServerPlayerEntity player = context.getSource().getPlayer();
+                if (player == null) return 0;
+                if (!homePositions.containsKey(player.getUuid())) {
+                    player.sendMessage(Text.of("§cУ вас не установлена точка дома! Используйте /sethome"), false);
+                    return 0;
+                }
+                player.sendMessage(Text.of("§eТелепортация через 3 секунды. Не двигайтесь и не получайте урон!"), false);
+                pendingTeleports.put(player.getUuid(), new TeleportTask(
+                    System.currentTimeMillis() + 3000,
+                    player.getPos(),
+                    player.getHealth()
+                ));
+                return 1;
+            }));
+        });
+
+        // Проверка таймера телепортации
+        ServerTickEvents.END_SERVER_TICK.register(server -> {
+            long now = System.currentTimeMillis();
+            Iterator> iterator = pendingTeleports.entrySet().iterator();
+            while (iterator.hasNext()) {
+                Map.Entry<UUID, TeleportTask> entry = iterator.next();
+                ServerPlayerEntity player = server.getPlayerManager().getPlayer(entry.getKey());
+                if (player == null) {
+                    iterator.remove();
+                    continue;
+                }
+                TeleportTask task = entry.getValue();
+                
+                if (player.getPos().squaredDistanceTo(task.startPos) > 0.04 || player.getHealth() < task.startHealth) {
+                    player.sendMessage(Text.of("§cТелепортация отменена из-за движения или урона!"), false);
+                    iterator.remove();
+                    continue;
+                }
+
+                if (now >= task.executeTime) {
+                    Vec3d targetPos = homePositions.get(player.getUuid());
+                    if (targetPos != null) {
+                        player.teleport(targetPos.x, targetPos.y, targetPos.z, true);
+                        player.sendMessage(Text.of("§aВы телепортировались домой!"), false);
+                    }
+                    iterator.remove();
+                }
+            }
+        });
+    }
+}
