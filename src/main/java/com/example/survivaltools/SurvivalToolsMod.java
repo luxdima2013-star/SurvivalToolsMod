@@ -13,8 +13,9 @@ import net.minecraft.text.Text;
 import net.minecraft.util.math.Vec3d;
 import static net.minecraft.server.command.CommandManager.literal;
 
+import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -114,32 +115,35 @@ public class SurvivalToolsMod implements ModInitializer {
             }));
         });
 
-        // Проверка таймера телепортации
+        // Проверка таймера телепортации (через простой список UUID)
         ServerTickEvents.END_SERVER_TICK.register(server -> {
             long now = System.currentTimeMillis();
-            Iterator> iterator = pendingTeleports.entrySet().iterator();
-            while (iterator.hasNext()) {
-                Map.Entry<UUID, TeleportTask> entry = iterator.next();
-                ServerPlayerEntity player = server.getPlayerManager().getPlayer(entry.getKey());
+            if (pendingTeleports.isEmpty()) return;
+
+            List<UUID> toProcess = new ArrayList<>(pendingTeleports.keySet());
+            for (UUID uuid : toProcess) {
+                TeleportTask task = pendingTeleports.get(uuid);
+                if (task == null) continue;
+
+                ServerPlayerEntity player = server.getPlayerManager().getPlayer(uuid);
                 if (player == null) {
-                    iterator.remove();
+                    pendingTeleports.remove(uuid);
                     continue;
                 }
-                TeleportTask task = entry.getValue();
                 
                 if (player.getPos().squaredDistanceTo(task.startPos) > 0.04 || player.getHealth() < task.startHealth) {
                     player.sendMessage(Text.of("§cТелепортация отменена из-за движения или урона!"), false);
-                    iterator.remove();
+                    pendingTeleports.remove(uuid);
                     continue;
                 }
 
                 if (now >= task.executeTime) {
-                    Vec3d targetPos = homePositions.get(player.getUuid());
+                    Vec3d targetPos = homePositions.get(uuid);
                     if (targetPos != null) {
                         player.teleport(targetPos.x, targetPos.y, targetPos.z, true);
                         player.sendMessage(Text.of("§aВы телепортировались домой!"), false);
                     }
-                    iterator.remove();
+                    pendingTeleports.remove(uuid);
                 }
             }
         });
