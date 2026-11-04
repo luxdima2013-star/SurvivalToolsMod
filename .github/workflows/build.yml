@@ -22,7 +22,7 @@ jobs:
       - name: Install Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
-          gradle-version: '8.8'
+          gradle-version: '8.5'
 
       - name: Build with Gradle
         run: gradle build
@@ -32,3 +32,4 @@ jobs:
         with:
           name: compiled-mod-jar
           path: build/libs/*.jar
+          
